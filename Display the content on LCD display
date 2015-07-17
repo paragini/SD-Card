@@ -1,0 +1,72 @@
+.equ lcd, 0x10003050                                 /* base address of LCD display*/
+.equ sdcard, 0x0b000000                           /*base address of SD card*/
+
+
+.global _start
+_start:
+
+movia r2,lcd                                               /*r2 points to the base address of the LCD*/
+movia r3,sdcard                                         /*r3 points to the base address of the SD card*/
+movi r15,512                                             /*512 (offset of CID) is set as a pointer*/
+
+sdcard_out:
+movi r7,0xb
+ldwio r8,564(r3)                                        /*Auxilary status register value is loaded into r8*/
+beq r8,r7,sdcard_in                                   /*If SD card is inserted then bit 1 of r8 is initiated r7 will be continuously polling bit 1.
+                                                                  If both are equal, then SD card is deleted and branch to sdcard_in or else loop back*/              
+
+br sdcard_out
+
+sdcard_in:
+
+/*Read Block */
+movia r9,0x0000                                        /*starting address of the message block on SD card*/
+
+next:
+stwio r9,556(r3)                                         /*starting address of SD card is written to cmd_arg  register */
+movi r9,0x11                                             /*READ_BLOCK command  ID  */
+stwio r9,560(r3)                                        /*Read ID is written into cmd register */
+movi r13,0x4                                            /*to check if the SD card is busy */
+
+busy:
+ldbio r10,564(r3)                                      /* value of aux status register is loaded into r10 */
+andi r10,r10,0x4                                       /*checking bit 3 of aux register high or not */
+beq r10,r4,busy
+
+not_busy:
+beq r15,r0,next_sector
+ldb r11,0(r3)                                              /* loading 1st byte of sd card memory into r11 through rxtx_buffer */
+movi r14,0x23                                           /* ASCII value of # is read */
+beq r11,r14,data_to_be_read                     /*comparing data to be read with the ASCII value of # */
+addi r3,r3,1                                                 /*increment the address of SD card */
+subi r15,r15,1                                             /* decrement the counter*/
+br not_busy
+
+next_sector:
+movi r15,512                                              /* add 512 and starts reading from next sector*/
+addi r9,r9,512                          
+br next
+
+data_to_be_read:
+movi r18,0x2e                                            /*ASCII value of period
+addi r3,r3,1                                                 /* period indicates end of the message, increment the address of SD card*/
+ldbio r11,0(r3)
+
+movi r4,0x0c                                            /*cursor is made off*/
+stbio r4,0(r2)
+movi r4,0x1c                                            /*Display is made off*/
+stbio r4,0(r2)
+movia r4,0b10000000                              /*sets the cursor location*/
+stwio r4,0(r2)
+
+next_data_to_display:
+beq r18,r0,DONE                                     /*once period is reached , branch to done or else continue the above process*/
+stbio r11,1(r2)
+addi r3,r3,1
+ldbio r11,0(r3)
+subi r18,r18,1
+br next_data_to_display
+
+DONE:
+br DONE
+.end
